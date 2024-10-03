@@ -7,6 +7,7 @@ from skimage.feature import canny
 from skimage.filters import gaussian
 import pandas as pd
 from scipy.optimize import curve_fit
+import matplotlib.dates as mdates
 
 def cos2theta(x, a, b, c):
     return a*np.cos((x-b)/180.*np.pi)**2+c
@@ -48,55 +49,55 @@ for file in Files[0:10000]:
 #    print(file)
     d = np.load(file)
     l = d.files
-    if 'timestamp_particle' not in l :
-        m = np.unique(np.asarray([np.int32(l[np.int32(np.char.find(l, '_'))+1:]) for l in l ]))
-        if m.size > 0 and np.max(m) > Multi_max: # select images with less than 22 pixels fired (risk of noise with LT30)
-            n_error += 1 # a bad multi is detected and rejected
-        elif m.size and np.max(m)> Multi_min: # select traces with more than 8 pixels fired
-            n_good_trace += 1 # a good event is detected
-            
-            # build date from file name
-            idx = np.int32(np.char.find(file, '.npz'))
-            date.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
-
-            # select 2D image for the current trace
-            field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
-            im      = d[field].reshape((16, 16))
-            im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
-
-            # apply Hough transfor and filter to identify a lign into the image
-            hough, theta, dist          = hough_line(im)
-            hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
-            hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
-            theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
-            idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
-            angle.append(theta_m[idx]/np.pi*180)   #register angle
-            # take first hough angle whatever number of houg lines found
-            print('...', theta_m/np.pi*180)
-    #        plt.imshow(im)
-    #        plt.show()
-    #        for _, agl, dist in zip(hough_m, theta_m, dist_m):
-    #            (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
-    #            plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
-    #            print(np.tan(agl + np.pi / 2))
-    #            print(agl/np.pi*180)
-    #        plt.show()
-    #        if theta_m.shape[0] == 1:
-    #            n_good_trace +=1
-    #            angle.append(theta_m[0]/np.pi*180)
-    #        else:
-    #            plt.imshow(im)
-    #            for _, agl, dist in zip(hough_m, theta_m, dist_m):
-    #                (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
-    #                plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
-    #                print(np.tan(agl + np.pi / 2))
-    #                print(agl/np.pi*180)
-    #            plt.show()
-        else:
-            n_good += 1
-    else : # load date from wrong files
+    print(l)
+    keys_to_remove = {'energy_list', 'pixel_number', 'multiplicity', 'timestamp_particle'}
+    l = [key for key in l if key not in keys_to_remove]
+    print(l)
+    m = np.unique(np.asarray([np.int32(l[np.int32(np.char.find(l, '_'))+1:]) for l in l ]))
+    if m.size > 0 and np.max(m) > Multi_max: # select images with less than 22 pixels fired (risk of noise with LT30)
+        n_error += 1 # a bad multi is detected and rejected
+    elif m.size and np.max(m)> Multi_min: # select traces with more than 8 pixels fired
+        n_good_trace += 1 # a good event is detected
+        
+        # build date from file name
         idx = np.int32(np.char.find(file, '.npz'))
-        date_wrong.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
+        date.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
+
+        # select 2D image for the current trace
+        field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
+        im      = d[field].reshape((16, 16))
+        im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
+
+        # apply Hough transfor and filter to identify a lign into the image
+        hough, theta, dist          = hough_line(im)
+        hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
+        hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
+        theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
+        idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
+        angle.append(theta_m[idx]/np.pi*180)   #register angle
+        # take first hough angle whatever number of houg lines found
+        print('...', theta_m/np.pi*180)
+#        plt.imshow(im)
+#        plt.show()
+#        for _, agl, dist in zip(hough_m, theta_m, dist_m):
+#            (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
+#            plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
+#            print(np.tan(agl + np.pi / 2))
+#            print(agl/np.pi*180)
+#        plt.show()
+#        if theta_m.shape[0] == 1:
+#            n_good_trace +=1
+#            angle.append(theta_m[0]/np.pi*180)
+#        else:
+#            plt.imshow(im)
+#            for _, agl, dist in zip(hough_m, theta_m, dist_m):
+#                (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
+#                plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
+#                print(np.tan(agl + np.pi / 2))
+#                print(agl/np.pi*180)
+#            plt.show()
+    else:
+        n_good += 1
 
     #        print('.......GOOD NO TRACE.......')
     #        print(file)
@@ -138,18 +139,19 @@ unique_days = data['day'].unique()
 
 # Create a 2D histogram of angles versus days
 plt.figure('muongram')
-days = data['date'].apply(lambda x: x.toordinal()).values  # Convert dates to ordinal numbers for plotting
+days = mdates.date2num(data['date'])  # Convert dates to matplotlib date numbers for plotting
 angles = data['angle'].values
-plt.hist2d(days, angles, bins=[len(unique_days), n_bins * 10], cmap='viridis', norm=LogNorm())  # Increase y-axis bins, add log norm
-plt.gca().set_xticks(days)
-plt.gca().set_xticklabels(data['date'].dt.strftime('%Y-%m-%d'), rotation=45, ha='right')
+plt.hist2d(days, angles, bins=[len(unique_days), n_bins * 4], cmap='viridis', norm=LogNorm())  # Increase y-axis bins, add log norm
+# plt.gca().set_xticks(days)
+# plt.gca().set_xticklabels(data['date'].dt.strftime('%Y-%m-%d'), rotation=45, ha='right')
 plt.colorbar(label='Number of Entries')
+plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+plt.gcf().autofmt_xdate()  # Automatically rotate date labels
 plt.xlabel('Date')
 plt.ylabel('Zenithal Angle [°]')
 plt.title('Caliste-MMA, cosmic-ray muons angle distribution over days')
 plt.show()
-
-
 
 
 plt.figure('detected muon angle vs date')
@@ -159,7 +161,6 @@ plt.ylabel('Detected Muon angle [°]')
 plt.show()
 
 
-
 # plot the number of muons detected per day
 plt.figure('muons per day')
 plt.hist(date, bins = len(unique_days)*2)
@@ -167,9 +168,6 @@ plt.xlabel('Date')
 plt.ylabel('Number of muons detected')
 plt.title('Number of muons detected per day')
 plt.show()
-
-
-
 
 
 n_files = len(Files)
@@ -189,6 +187,7 @@ plt.figure('date')
 plt.plot(date)
 plt.plot(date_wrong)
 plt.show()
+
 
 
 # for the record, findng corresponding histogram and data
