@@ -8,6 +8,9 @@ from skimage.filters import gaussian
 import pandas as pd
 from scipy.optimize import curve_fit
 import matplotlib.dates as mdates
+import seaborn as sns
+
+
 
 def cos2theta(x, a, b, c):
     return a*np.cos((x-b)/180.*np.pi)**2+c
@@ -49,10 +52,8 @@ for file in Files[0:10000]:
 #    print(file)
     d = np.load(file)
     l = d.files
-    print(l)
     keys_to_remove = {'energy_list', 'pixel_number', 'multiplicity', 'timestamp_particle'}
     l = [key for key in l if key not in keys_to_remove]
-    print(l)
     m = np.unique(np.asarray([np.int32(l[np.int32(np.char.find(l, '_'))+1:]) for l in l ]))
     if m.size > 0 and np.max(m) > Multi_max: # select images with less than 22 pixels fired (risk of noise with LT30)
         n_error += 1 # a bad multi is detected and rejected
@@ -102,6 +103,10 @@ for file in Files[0:10000]:
     #        print('.......GOOD NO TRACE.......')
     #        print(file)
 
+# i want to select the date only from 13 september to 22 september
+filtered_data = [(d, a) for d, a in zip(date, angle) if pd.to_datetime('20240913', format="%Y%m%d") < d < pd.to_datetime('20240923', format="%Y%m%d")]
+date, angle = zip(*filtered_data) if filtered_data else ([], [])
+
 
 print('number of issues', n_error)
 print('number of goods', n_good)
@@ -127,7 +132,7 @@ plt.ylabel('Entries')
 plt.title('Caliste-MMA, cosmic-ray muons angle distribution')
 plt.legend()
 
-# I want to do a function that to several cosmic ray muons angle distribution for different days i a 2d histogram like the previous plot above but for each day
+
 print(len(angle), len(date))    
 
 # Convert date to a DataFrame for easier manipulation
@@ -160,6 +165,13 @@ plt.xlabel('Date [1 minute resolution]')
 plt.ylabel('Detected Muon angle [°]')
 plt.show()
 
+# Cluster
+plt.figure('Detected Muon angle vs date with density contours')
+plt.plot(date, angle, '.k', markersize=1, alpha=0.3, label='Muon angle')
+sns.kdeplot(x=date, y=angle, cmap='plasma', fill=True, thresh=0.0, levels=20, linewidths=2.5, alpha = 0.9)
+plt.xlabel('Date [1 minute resolution]')
+plt.ylabel('Detected Muon angle [°]')
+plt.legend()
 
 # plot the number of muons detected per day
 plt.figure('muons per day')
