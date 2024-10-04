@@ -9,6 +9,9 @@ import pandas as pd
 from scipy.optimize import curve_fit
 import matplotlib.dates as mdates
 import seaborn as sns
+from scipy.interpolate import interpn
+from matplotlib.colors import Normalize
+import matplotlib.cm as cm
 
 
 
@@ -134,11 +137,11 @@ plt.legend()
 plt.show()
 
 
-
+#### Muongram ####
 data = pd.DataFrame({'date': date, 'angle': angle})  # Create a DataFrame with date and angle
 data['day'] = data['date'].dt.date  # Extract the day from the date
 angles = data['angle'].values  # Extract angle values
-interval_hours = 1   # Define the interval in hours
+interval_hours = 12   # Define the interval in hours
 total_days = (data['date'].max() - data['date'].min()).days + 1  # Calculate the total number of days
 n_bins_x = total_days * 24 // interval_hours  # Calculate the number of bins for the x-axis
 n_bins_y = int(max(angles)/2)
@@ -154,35 +157,174 @@ plt.xlabel('Date')
 plt.ylabel('Zenithal Angle [°]')  
 plt.title(f'Caliste-MMA, cosmic-ray muons angle distribution over {interval_hours}-hour intervals')  
 plt.show() 
+#################
+
+# Muongram and plot with rolling time interval windows
+data = pd.DataFrame({'date': date, 'angle': angle})
+data['day'] = data['date'].dt.date  
+window_size = 12  # Taille de la fenêtre en heures
+step_size = 1  # Taille du pas en heures
+days = mdates.date2num(data['date'])
+angles = data['angle'].values
+total_hours = int((data['date'].max() - data['date'].min()).total_seconds() // 3600)
+num_windows = total_hours - window_size + 1
+window_dates = []
+window_angles = []
+muons_count = []
+mean_windows_date = []
+for start_hour in range(0, num_windows, step_size):
+    end_hour = start_hour + window_size
+    start_time = data['date'].min() + pd.Timedelta(hours=start_hour)
+    end_time = data['date'].min() + pd.Timedelta(hours=end_hour)
+    window_data = data[(data['date'] >= start_time) & (data['date'] < end_time)]
+    
+    window_dates.extend(mdates.date2num(window_data['date']))
+    window_angles.extend(window_data['angle'])
+    muons_count.append(len(window_data['angle']))
+    mean_windows_date.append(mdates.date2num(window_data['date'].mean()))
+
+n_bins_x = num_windows // step_size
+n_bins_y = int(max(angles) / 2)
+
+plt.figure('muongram')
+plt.hist2d(window_dates, window_angles, bins=[n_bins_x, n_bins_y], cmap='plasma', norm=LogNorm())
+plt.colorbar(label='Number of Entries')
+locator = mdates.HourLocator(interval=window_size)
+plt.gca().xaxis.set_major_locator(locator)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
+plt.xlabel('Date')
+plt.ylabel('Zenithal Angle [°]')
+plt.title(f'Caliste-MMA, cosmic-ray muons angle distribution over {window_size}-hour rolling windows')
+plt.show()
+
+plt.figure('debug')
+plt.plot(mean_windows_date, muons_count)
+plt.xlabel('Date')
+plt.title('Muons detected vs Date')
+plt.ylabel('Muons detected')
+plt.gca().xaxis.set_major_locator(locator)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
+plt.show()
+
+#################
+
+
+def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
+    """
+    Scatter plot colored by 2D histogram with density interpolation.
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+    data, x_e, y_e = np.histogram2d(x, y, bins=bins, density=True)
+    z = interpn((0.5 * (x_e[1:] + x_e[:-1]), 0.5 * (y_e[1:] + y_e[:-1])), 
+                data, np.vstack([x, y]).T, method="splinef2d", bounds_error=False)
+    z[np.isnan(z)] = 0.0
+
+    if sort:
+        idx = np.argsort(z)  # Sort based on z values
+        x, y, z = np.array(x)[idx], np.array(y)[idx], np.array(z)[idx]
+
+    sc = ax.scatter(x, y, c=z, cmap=cmap, **kwargs)
+
+    norm = Normalize(vmin=np.min(z), vmax=np.max(z))
+    cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
+    cbar.ax.set_ylabel('Density')
+
+    return ax
+
+date_numeric = mdates.date2num(date)  # Convert datetime to numeric for compatibility
+# plt.figure('Detected Muon angle vs date with density contours')
+ax = density_scatter(date_numeric, angle, bins=50, cmap='plasma', alpha=0.7)
+ax.set_xlabel('Date [1 minute resolution]')
+ax.set_ylabel('Detected Muon angle [°]')
+ax.xaxis.set_major_locator(locator)
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
+plt.legend(['Muon angle'])
+plt.show()
 
 
 
 
 
 
-# plot the angle vs date
+
+
+#### plot the angle vs date #####
 plt.figure('detected muon angle vs date')
 plt.plot(date, angle, '.k')
 plt.xlabel('Date [1 minute resolution]')
 plt.ylabel('Detected Muon angle [°]')
 plt.show()
+#################################
 
-# Cluster
+
+##### Cluster on angle of muons vs date #####
 plt.figure('Detected Muon angle vs date with density contours')
 plt.plot(date, angle, '.k', markersize=1, alpha=0.3, label='Muon angle')
 sns.kdeplot(x=date, y=angle, cmap='plasma', fill=True, thresh=0.0, levels=20, linewidths=2.5, alpha = 0.9)
 plt.xlabel('Date [1 minute resolution]')
+plt.gca().xaxis.set_major_locator(locator)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
 plt.ylabel('Detected Muon angle [°]')
 plt.legend()
+plt.show()
+#############################################
+
+
+##### Cluster on angle of muons vs date #####
+def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
+    """
+    Scatter plot colored by 2D histogram with density interpolation.
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+    data, x_e, y_e = np.histogram2d(x, y, bins=bins, density=True)
+    z = interpn((0.5 * (x_e[1:] + x_e[:-1]), 0.5 * (y_e[1:] + y_e[:-1])), 
+                data, np.vstack([x, y]).T, method="splinef2d", bounds_error=False)
+    z[np.isnan(z)] = 0.0
+
+    if sort:
+        idx = np.argsort(z)  # Sort based on z values
+        x, y, z = np.array(x)[idx], np.array(y)[idx], np.array(z)[idx]
+
+    sc = ax.scatter(x, y, c=z, cmap=cmap, **kwargs)
+
+    norm = Normalize(vmin=np.min(z), vmax=np.max(z))
+    cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
+    cbar.ax.set_ylabel('Density')
+
+    return ax,fig
+
+date_numeric = mdates.date2num(date) 
+ax,fig = density_scatter(date_numeric, angle, bins=50, cmap='plasma', alpha=0.7)
+ax.set_title('Detected Muon angle vs date with density contours using interpolation')
+ax.set_xlabel('Date [1 minute resolution]')
+ax.set_ylabel('Detected Muon angle [°]')
+ax.xaxis.set_major_locator(locator)
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
+plt.legend(['Muon angle'])
+plt.show()
+#############################################
+
+
 
 # plot the number of muons detected per day
 plt.figure('muons per day')
+unique_days = data['day'].unique()
 plt.hist(date, bins = len(unique_days)*2)
 plt.xlabel('Date')
+plt.gca().xaxis.set_major_locator(locator)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+plt.gcf().autofmt_xdate()
 plt.ylabel('Number of muons detected')
 plt.title('Number of muons detected per day')
 plt.show()
-
+#############################################
 
 n_files = len(Files)
 RealTime = date[-1]-date[0]
