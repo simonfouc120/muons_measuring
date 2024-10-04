@@ -131,34 +131,36 @@ plt.xlabel('Zenithal Angle [°]')
 plt.ylabel('Entries')
 plt.title('Caliste-MMA, cosmic-ray muons angle distribution')
 plt.legend()
-
-
-print(len(angle), len(date))    
-
-# Convert date to a DataFrame for easier manipulation
-data = pd.DataFrame({'date': date, 'angle': angle})
-data['day'] = data['date'].dt.date
-
-# Get unique days
-unique_days = data['day'].unique()
-
-# Create a 2D histogram of angles versus days
-plt.figure('muongram')
-days = mdates.date2num(data['date'])  # Convert dates to matplotlib date numbers for plotting
-angles = data['angle'].values
-plt.hist2d(days, angles, bins=[len(unique_days), n_bins * 4], cmap='viridis', norm=LogNorm())  # Increase y-axis bins, add log norm
-# plt.gca().set_xticks(days)
-# plt.gca().set_xticklabels(data['date'].dt.strftime('%Y-%m-%d'), rotation=45, ha='right')
-plt.colorbar(label='Number of Entries')
-plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-plt.gcf().autofmt_xdate()  # Automatically rotate date labels
-plt.xlabel('Date')
-plt.ylabel('Zenithal Angle [°]')
-plt.title('Caliste-MMA, cosmic-ray muons angle distribution over days')
 plt.show()
 
 
+
+data = pd.DataFrame({'date': date, 'angle': angle})  # Create a DataFrame with date and angle
+data['day'] = data['date'].dt.date  # Extract the day from the date
+angles = data['angle'].values  # Extract angle values
+interval_hours = 1   # Define the interval in hours
+total_days = (data['date'].max() - data['date'].min()).days + 1  # Calculate the total number of days
+n_bins_x = total_days * 24 // interval_hours  # Calculate the number of bins for the x-axis
+n_bins_y = int(max(angles)/2)
+days = mdates.date2num(data['date'])  # Convert dates to matplotlib's date format
+plt.figure('muongram')  
+plt.hist2d(days, angles, bins=[n_bins_x, n_bins_y], cmap='viridis', norm=LogNorm()) 
+plt.colorbar(label='Number of Entries')  
+locator = mdates.DayLocator(interval=max(total_days // 10, 1))  
+plt.gca().xaxis.set_major_locator(locator) 
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))  
+plt.gcf().autofmt_xdate() 
+plt.xlabel('Date')  
+plt.ylabel('Zenithal Angle [°]')  
+plt.title(f'Caliste-MMA, cosmic-ray muons angle distribution over {interval_hours}-hour intervals')  
+plt.show() 
+
+
+
+
+
+
+# plot the angle vs date
 plt.figure('detected muon angle vs date')
 plt.plot(date, angle, '.k')
 plt.xlabel('Date [1 minute resolution]')
