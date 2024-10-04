@@ -32,6 +32,29 @@ def list_files_in_repository(directory_path):
     return file_list
 
 
+
+def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
+    """
+    Scatter plot colored by 2D histogram with density interpolation.
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+    data, x_e, y_e = np.histogram2d(x, y, bins=bins, density=True)
+    z = interpn((0.5 * (x_e[1:] + x_e[:-1]), 0.5 * (y_e[1:] + y_e[:-1])), 
+                data, np.vstack([x, y]).T, method="splinef2d", bounds_error=False)
+    z[np.isnan(z)] = 0.0
+
+    if sort:
+        idx = np.argsort(z)  # Sort based on z values
+        x, y, z = np.array(x)[idx], np.array(y)[idx], np.array(z)[idx]
+    sc = ax.scatter(x, y, c=z, cmap=cmap, **kwargs)
+    norm = Normalize(vmin=np.min(z), vmax=np.max(z))
+    cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
+    cbar.ax.set_ylabel('Density')
+    return ax, fig
+
+
+
 Files = list_files_in_repository(r"C:/Users/sf270338/MMA/Caliste-MMA/Muons cosmiques/DATA_20240912_20240922")
 #
 # Files += list_files_in_repository("/Users/ol161303/Documents/PROGRAMMES/IDL-DATA/prog_idl/02_STIX/PIPELINE/V_20200412/MMA/11_CALISTE_MM_CONFIG/DATA_20240830_20240919/20240917_20240919-LT30")
@@ -207,49 +230,7 @@ plt.gca().xaxis.set_major_locator(locator)
 plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
 plt.gcf().autofmt_xdate()
 plt.show()
-
 #################
-
-
-def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
-    """
-    Scatter plot colored by 2D histogram with density interpolation.
-    """
-    if ax is None:
-        fig, ax = plt.subplots()
-    data, x_e, y_e = np.histogram2d(x, y, bins=bins, density=True)
-    z = interpn((0.5 * (x_e[1:] + x_e[:-1]), 0.5 * (y_e[1:] + y_e[:-1])), 
-                data, np.vstack([x, y]).T, method="splinef2d", bounds_error=False)
-    z[np.isnan(z)] = 0.0
-
-    if sort:
-        idx = np.argsort(z)  # Sort based on z values
-        x, y, z = np.array(x)[idx], np.array(y)[idx], np.array(z)[idx]
-
-    sc = ax.scatter(x, y, c=z, cmap=cmap, **kwargs)
-
-    norm = Normalize(vmin=np.min(z), vmax=np.max(z))
-    cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
-    cbar.ax.set_ylabel('Density')
-
-    return ax
-
-date_numeric = mdates.date2num(date)  # Convert datetime to numeric for compatibility
-# plt.figure('Detected Muon angle vs date with density contours')
-ax = density_scatter(date_numeric, angle, bins=50, cmap='plasma', alpha=0.7)
-ax.set_xlabel('Date [1 minute resolution]')
-ax.set_ylabel('Detected Muon angle [°]')
-ax.xaxis.set_major_locator(locator)
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-plt.gcf().autofmt_xdate()
-plt.legend(['Muon angle'])
-plt.show()
-
-
-
-
-
-
 
 
 #### plot the angle vs date #####
@@ -261,44 +242,7 @@ plt.show()
 #################################
 
 
-##### Cluster on angle of muons vs date #####
-plt.figure('Detected Muon angle vs date with density contours')
-plt.plot(date, angle, '.k', markersize=1, alpha=0.3, label='Muon angle')
-sns.kdeplot(x=date, y=angle, cmap='plasma', fill=True, thresh=0.0, levels=20, linewidths=2.5, alpha = 0.9)
-plt.xlabel('Date [1 minute resolution]')
-plt.gca().xaxis.set_major_locator(locator)
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-plt.gcf().autofmt_xdate()
-plt.ylabel('Detected Muon angle [°]')
-plt.legend()
-plt.show()
-#############################################
-
-
-##### Cluster on angle of muons vs date #####
-def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
-    """
-    Scatter plot colored by 2D histogram with density interpolation.
-    """
-    if ax is None:
-        fig, ax = plt.subplots()
-    data, x_e, y_e = np.histogram2d(x, y, bins=bins, density=True)
-    z = interpn((0.5 * (x_e[1:] + x_e[:-1]), 0.5 * (y_e[1:] + y_e[:-1])), 
-                data, np.vstack([x, y]).T, method="splinef2d", bounds_error=False)
-    z[np.isnan(z)] = 0.0
-
-    if sort:
-        idx = np.argsort(z)  # Sort based on z values
-        x, y, z = np.array(x)[idx], np.array(y)[idx], np.array(z)[idx]
-
-    sc = ax.scatter(x, y, c=z, cmap=cmap, **kwargs)
-
-    norm = Normalize(vmin=np.min(z), vmax=np.max(z))
-    cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
-    cbar.ax.set_ylabel('Density')
-
-    return ax,fig
-
+##### Cluster on angle of muons vs date ########
 date_numeric = mdates.date2num(date) 
 ax,fig = density_scatter(date_numeric, angle, bins=50, cmap='plasma', alpha=0.7)
 ax.set_title('Detected Muon angle vs date with density contours using interpolation')
@@ -310,8 +254,6 @@ plt.gcf().autofmt_xdate()
 plt.legend(['Muon angle'])
 plt.show()
 #############################################
-
-
 
 # plot the number of muons detected per day
 plt.figure('muons per day')
