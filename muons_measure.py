@@ -64,7 +64,7 @@ Files = sorted(Files)
 # search crossing muons
 n_error         = 0     # number of abdormal mulitplicities
 n_good          = 0     # number of normal multiplicities
-Multi_min       = 6     # minimal multiplicity
+Multi_min       = 5     # minimal multiplicity
 Multi_max       = 22    # maximal multiplicity
 angle_shift     = 0     #+6    # detector image rotation angle
 n_good_trace    = 0     # number of muon trace considered good
@@ -72,7 +72,7 @@ n_sigma         = 3     # gaussian filter of the hough function to detect lines
 angle  = [] # muon angle from normal in degrees
 date   = [] # date of trace to later find the rate
 date_wrong = [] # date of wrong trace to later find the rate
-
+deposit_energy = [] # energy deposited by the muons in the detector
 for file in Files[0:10000]:
     
 #    print(file)
@@ -85,24 +85,17 @@ for file in Files[0:10000]:
         n_error += 1 # a bad multi is detected and rejected
     elif m.size and np.max(m)> Multi_min: # select traces with more than 8 pixels fired
         n_good_trace += 1 # a good event is detected
-        
-        # build date from file name
         idx = np.int32(np.char.find(file, '.npz'))
         date.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
-
-        # select 2D image for the current trace
         field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
         im      = d[field].reshape((16, 16))
         im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
-
-        # apply Hough transfor and filter to identify a lign into the image
         hough, theta, dist          = hough_line(im)
         hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
         hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
         theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
         idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
         angle.append(theta_m[idx]/np.pi*180)   #register angle
-        # take first hough angle whatever number of houg lines found
         print('...', theta_m/np.pi*180)
 #        plt.imshow(im)
 #        plt.show()
@@ -164,10 +157,10 @@ plt.show()
 data = pd.DataFrame({'date': date, 'angle': angle})  # Create a DataFrame with date and angle
 data['day'] = data['date'].dt.date  # Extract the day from the date
 angles = data['angle'].values  # Extract angle values
-interval_hours = 12   # Define the interval in hours
+interval_hours = 6   # Define the interval in hours
 total_days = (data['date'].max() - data['date'].min()).days + 1  # Calculate the total number of days
 n_bins_x = total_days * 24 // interval_hours  # Calculate the number of bins for the x-axis
-n_bins_y = int(max(angles)/2)
+n_bins_y = int(max(angles)/4)
 days = mdates.date2num(data['date'])  # Convert dates to matplotlib's date format
 plt.figure('muongram')  
 plt.hist2d(days, angles, bins=[n_bins_x, n_bins_y], cmap='viridis', norm=LogNorm()) 
@@ -195,6 +188,7 @@ window_dates = []
 window_angles = []
 muons_count = []
 mean_windows_date = []
+histogram_data = []
 for start_hour in range(0, num_windows, step_size):
     end_hour = start_hour + window_size
     start_time = data['date'].min() + pd.Timedelta(hours=start_hour)
@@ -203,14 +197,22 @@ for start_hour in range(0, num_windows, step_size):
     
     window_dates.extend(mdates.date2num(window_data['date']))
     window_angles.extend(window_data['angle'])
+    histo_angle, angle_bins = np.histogram(window_data['angle'], bins = 90, range = ((-90,90)))
+    histogram_data.append(histo_angle)
     muons_count.append(len(window_data['angle']))
     mean_windows_date.append(mdates.date2num(window_data['date'].mean()))
+
 
 n_bins_x = num_windows // step_size
 n_bins_y = int(max(angles) / 2)
 
+
+x = mean_windows_date
+y = angle_bins[:-1]
+X,Y = np.meshgrid(x,y)
+
 plt.figure('muongram')
-plt.hist2d(window_dates, window_angles, bins=[n_bins_x, n_bins_y], cmap='plasma', norm=LogNorm())
+plt.pcolormesh(X, Y, np.array(histogram_data).T, cmap='plasma', norm=LogNorm())
 plt.colorbar(label='Number of Entries')
 locator = mdates.HourLocator(interval=window_size)
 plt.gca().xaxis.set_major_locator(locator)
@@ -221,6 +223,8 @@ plt.ylabel('Zenithal Angle [°]')
 plt.title(f'Caliste-MMA, cosmic-ray muons angle distribution over {window_size}-hour rolling windows')
 plt.show()
 
+
+## plot the number of muons detected vs date in rolling windows
 plt.figure('debug')
 plt.plot(mean_windows_date, muons_count)
 plt.xlabel('Date')
