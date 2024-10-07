@@ -13,6 +13,10 @@ from scipy.interpolate import interpn
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
 
+THICKNESS = 0.2
+SIZE = 1.28
+PIXEL_NUMBER = 16
+PIXEL_SIZE = SIZE/PIXEL_NUMBER
 
 
 def cos2theta(x, a, b, c):
@@ -31,6 +35,14 @@ def list_files_in_repository(directory_path):
         file_list.sort(key=lambda x: os.path.basename(x[0]).lower())
     return file_list
 
+def find_angle(matrix) :
+    y_max = np.max(np.where(matrix !=0 )[1])
+    y_min = np.min(np.where(matrix !=0 )[1])
+    if y_max == y_min:
+        return 90
+    else : 
+        angle = np.arctan(THICKNESS/(((y_max - y_min)-1)*PIXEL_SIZE))
+    return np.float16(np.rad2deg(angle))  # return the angle in degrees in absolute value
 
 
 def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
@@ -64,7 +76,7 @@ Files = sorted(Files)
 # search crossing muons
 n_error         = 0     # number of abdormal mulitplicities
 n_good          = 0     # number of normal multiplicities
-Multi_min       = 5     # minimal multiplicity
+Multi_min       = 8     # minimal multiplicity
 Multi_max       = 22    # maximal multiplicity
 angle_shift     = 0     #+6    # detector image rotation angle
 n_good_trace    = 0     # number of muon trace considered good
@@ -73,9 +85,9 @@ angle  = [] # muon angle from normal in degrees
 date   = [] # date of trace to later find the rate
 date_wrong = [] # date of wrong trace to later find the rate
 deposit_energy = [] # energy deposited by the muons in the detector
+total_frame = np.zeros((16,16))
+azymuthal_angle = []
 for file in Files[0:10000]:
-    
-#    print(file)
     d = np.load(file)
     l = d.files
     keys_to_remove = {'energy_list', 'pixel_number', 'multiplicity', 'timestamp_particle'}
@@ -90,32 +102,35 @@ for file in Files[0:10000]:
         field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
         im      = d[field].reshape((16, 16))
         im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
+        azymuthal_angle.append(find_angle(d[field].reshape((16, 16))))
+        total_frame += im
         hough, theta, dist          = hough_line(im)
         hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
         hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
         theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
         idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
         angle.append(theta_m[idx]/np.pi*180)   #register angle
-        print('...', theta_m/np.pi*180)
-#        plt.imshow(im)
-#        plt.show()
-#        for _, agl, dist in zip(hough_m, theta_m, dist_m):
-#            (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
-#            plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
-#            print(np.tan(agl + np.pi / 2))
-#            print(agl/np.pi*180)
-#        plt.show()
-#        if theta_m.shape[0] == 1:
-#            n_good_trace +=1
-#            angle.append(theta_m[0]/np.pi*180)
-#        else:
-#            plt.imshow(im)
-#            for _, agl, dist in zip(hough_m, theta_m, dist_m):
-#                (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
-#                plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
-#                print(np.tan(agl + np.pi / 2))
-#                print(agl/np.pi*180)
-#            plt.show()
+        # print('...', theta_m/np.pi*180)
+        ##### Add total frame ######
+        # plt.imshow(im)
+        # plt.show()
+        # for _, agl, dist in zip(hough_m, theta_m, dist_m):
+        #     (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
+        #     plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
+        #     print(np.tan(agl + np.pi / 2))
+        #     print(agl/np.pi*180)
+        # plt.show()
+        # if theta_m.shape[0] == 1:
+        #     n_good_trace +=1
+        #     angle.append(theta_m[0]/np.pi*180)
+        # else:
+        #     plt.imshow(im)
+        #     for _, agl, dist in zip(hough_m, theta_m, dist_m):
+        #         (x0, y0) = dist * np.array([np.cos(agl), np.sin(agl)])
+        #         plt.axline((x0, y0), slope=np.tan(agl + np.pi / 2))
+        #         print(np.tan(agl + np.pi / 2))
+        #         print(agl/np.pi*180)
+        #     plt.show()
     else:
         n_good += 1
 
@@ -228,8 +243,10 @@ plt.show()
 plt.figure('debug')
 plt.plot(mean_windows_date, muons_count)
 plt.xlabel('Date')
-plt.title('Muons detected vs Date')
+plt.title('Muons detected in 12 hours vs Date ( step = 1 hour )')
 plt.ylabel('Muons detected')
+locator = mdates.DayLocator(interval=max(total_days // 10, 1))  
+
 plt.gca().xaxis.set_major_locator(locator)
 plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
 plt.gcf().autofmt_xdate()
@@ -259,17 +276,29 @@ plt.legend(['Muon angle'])
 plt.show()
 #############################################
 
-# plot the number of muons detected per day
-plt.figure('muons per day')
-unique_days = data['day'].unique()
-plt.hist(date, bins = len(unique_days)*2)
-plt.xlabel('Date')
-plt.gca().xaxis.set_major_locator(locator)
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-plt.gcf().autofmt_xdate()
-plt.ylabel('Number of muons detected')
-plt.title('Number of muons detected per day')
+
+########### plot the azymuthal angle distribution of the muons ########
+azymuthal_angle = np.array(azymuthal_angle)
+azymuthal_angle=np.append(azymuthal_angle, -azymuthal_angle)
+plt.hist(azymuthal_angle, bins = 180)
+plt.xlabel('Azimuthal Angle [°]')
+plt.ylabel('Count')
+plt.title('Caliste-MMA, cosmic-ray muons azimuthal angle distribution')
 plt.show()
+######################################################################
+
+#############################################
+# plot the number of muons detected per day
+# plt.figure('muons per day')
+# unique_days = data['day'].unique()
+# plt.hist(date, bins = len(unique_days)*2)
+# plt.xlabel('Date')
+# plt.gca().xaxis.set_major_locator(locator)
+# plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+# plt.gcf().autofmt_xdate()
+# plt.ylabel('Number of muons detected')
+# plt.title('Number of muons detected per day')
+# plt.show()
 #############################################
 
 n_files = len(Files)
@@ -285,10 +314,10 @@ print('check %4.2f Muons/hour'%(n_good_trace/LiveTime_estimate*3600.))
 
 
 # plot the date to debug
-plt.figure('date')
-plt.plot(date)
-plt.plot(date_wrong)
-plt.show()
+# plt.figure('date')
+# plt.plot(date)
+# plt.plot(date_wrong)
+# plt.show()
 
 
 
