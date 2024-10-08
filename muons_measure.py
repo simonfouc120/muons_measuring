@@ -12,6 +12,7 @@ import seaborn as sns
 from scipy.interpolate import interpn
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import Axes3D
 
 THICKNESS = 0.2
 SIZE = 1.28
@@ -43,6 +44,71 @@ def find_angle(matrix) :
     else : 
         angle = np.arctan(THICKNESS/(((y_max - y_min)-1)*PIXEL_SIZE))
     return np.float16(np.rad2deg(angle))  # return the angle in degrees in absolute value
+
+
+def count_clusters(matrix):
+    def dfs(row, col):
+        if row < 0 or col < 0 or row >= len(matrix) or col >= len(matrix[0]) or matrix[row][col] == 0:
+            return
+        matrix[row][col] = 0  # Mark as visited
+        for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1),(1, 1), (1, -1), (-1, -1), (-1, 1) ]:
+            dfs(row + dr, col + dc)
+
+    count = 0
+    for i in range(len(matrix)):
+        for j in range(len(matrix[0])):
+            if matrix[i][j] != 0:
+                count += 1
+                dfs(i, j)
+    # print('number of cluster : ',count)
+    return count
+
+
+def find_angle_v2(matrix) :
+
+    """
+    Calculate the spherical coord of a muon trace in the detector.
+
+    Parameters:
+    matrix (numpy.ndarray): 2D array representing the detector hitmap.
+
+    Returns:
+    tuple: A tuple containing:
+        - rho (float): The distance of the muon trace.
+        - theta (float): The theta angle of the muon trace in degrees.
+        - phi (float): The phi angle of the muon trace in degrees.
+    """ 
+    # I want to know the coordinates (x and y) of the pixel hited with the highest y value (axis 1)
+    y_coords, x_coords = np.where(matrix != 0)
+    z_max = np.argmin(y_coords)
+    x_1 = x_coords[z_max]
+    z_top = y_coords[z_max]
+    z_min = np.argmax(y_coords)
+    x_2 = x_coords[z_min]
+    z_bot = y_coords[z_min]
+
+    # print(f"Coordinates of the pixel with the highest y value: (x={x_1}, y={z_top})")
+    # print(f"Coordinates of the pixel with the lowest y value: (x={x_2}, y={z_bot})")
+    # z_max = np.max(np.where(matrix !=0 )[0])
+    # z_min = np.min(np.where(matrix !=0 )[0])
+    z_vector = (z_top - z_bot) * PIXEL_SIZE
+    # print(z_max, z_min)
+    # x_max = np.max(np.where(matrix !=0 )[1])
+    # x_min = np.min(np.where(matrix !=0 )[1])
+    x_vector = (x_2 - x_1) * PIXEL_SIZE
+    # print(x_max, x_min)
+
+    y_vector = -1*THICKNESS
+    rho = np.sqrt(x_vector**2 + y_vector**2 + z_vector**2)
+    theta = np.rad2deg(np.arccos(z_vector/rho))
+    # phi = np.rad2deg(np.arctan(np.sqrt(x_vector**2 + y_vector**2)/z_vector))
+    # phi = np.rad2deg(np.arctan(y_vector/x_vector))
+    phi = np.rad2deg(np.atan2(y_vector, x_vector))
+    # if np.random.rand() > 0.5:
+    #     phi = -phi
+    # print((x_vector, y_vector, z_vector))
+    # print((rho, theta, phi))
+    return rho, theta, phi
 
 
 def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
@@ -81,35 +147,54 @@ Multi_max       = 22    # maximal multiplicity
 angle_shift     = 0     #+6    # detector image rotation angle
 n_good_trace    = 0     # number of muon trace considered good
 n_sigma         = 3     # gaussian filter of the hough function to detect lines
-angle  = [] # muon angle from normal in degrees
+hough_angle  = [] # muon angle from normal in degrees
 date   = [] # date of trace to later find the rate
 date_wrong = [] # date of wrong trace to later find the rate
 deposit_energy = [] # energy deposited by the muons in the detector
-total_frame = np.zeros((16,16))
-azymuthal_angle = []
+total_frame = np.zeros((16,16)) # total frame of the detector
+azimuthal_angle = []
+theta_array = []
+phi_array = [] 
+rho_array = []
+n_file = 0
+
+
 for file in Files[0:10000]:
+    n_file +=1
+    if n_file % 1000 == 0:
+        print('...processing file %d'%n_file)
     d = np.load(file)
     l = d.files
     keys_to_remove = {'energy_list', 'pixel_number', 'multiplicity', 'timestamp_particle'}
     l = [key for key in l if key not in keys_to_remove]
     m = np.unique(np.asarray([np.int32(l[np.int32(np.char.find(l, '_'))+1:]) for l in l ]))
+
     if m.size > 0 and np.max(m) > Multi_max: # select images with less than 22 pixels fired (risk of noise with LT30)
         n_error += 1 # a bad multi is detected and rejected
     elif m.size and np.max(m)> Multi_min: # select traces with more than 8 pixels fired
-        n_good_trace += 1 # a good event is detected
-        idx = np.int32(np.char.find(file, '.npz'))
-        date.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
-        field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
-        im      = d[field].reshape((16, 16))
-        im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
-        azymuthal_angle.append(find_angle(d[field].reshape((16, 16))))
-        total_frame += im
-        hough, theta, dist          = hough_line(im)
-        hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
-        hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
-        theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
-        idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
-        angle.append(theta_m[idx]/np.pi*180)   #register angle
+        if count_clusters(d['hitmap_'+str(m[-1])].reshape((16, 16))) < 2 :
+            n_good_trace += 1 # a good event is detected
+            idx = np.int32(np.char.find(file, '.npz'))
+            date.append(pd.to_datetime(file[idx-15:idx], format="%Y%m%d_%H%M%S"))
+            field   = 'hitmap_'+str(m[-1]) #max multiplicity in this file
+            im      = d[field].reshape((16, 16))
+            im      = rotate(im,90+angle_shift) # rotate the image to get the image top in imshow()
+            current_frame = im
+
+            azimuthal_angle.append(find_angle(current_frame))
+            rho, theta, phi = find_angle_v2(im)
+            rho_array.append(rho)
+            theta_array.append(theta)
+            phi_array.append(phi)
+
+
+            total_frame += im
+            hough, theta, dist          = hough_line(im)
+            hough                       = gaussian(hough, sigma=n_sigma) # smooth Hough space transform
+            hough_m, theta_m, dist_m    = hough_line_peaks(hough, theta, dist)
+            theta_m_abs                 = np.abs(theta_m) # search smallest angle in multiple angel hough
+            idx = np.argmin(theta_m_abs) # take the minimum angle found in hough
+            hough_angle.append(theta_m[idx]/np.pi*180)   #register angle
         # print('...', theta_m/np.pi*180)
         ##### Add total frame ######
         # plt.imshow(im)
@@ -138,19 +223,20 @@ for file in Files[0:10000]:
     #        print(file)
 
 # i want to select the date only from 13 september to 22 september
-filtered_data = [(d, a) for d, a in zip(date, angle) if pd.to_datetime('20240913', format="%Y%m%d") < d < pd.to_datetime('20240923', format="%Y%m%d")]
-date, angle = zip(*filtered_data) if filtered_data else ([], [])
-
+filtered_data = [(d, a, az) for d, a, az in zip(date, hough_angle, azimuthal_angle) if pd.to_datetime('20240913', format="%Y%m%d") < d < pd.to_datetime('20240923', format="%Y%m%d")]
+date, hough_angle, azimuthal_angle = zip(*filtered_data) if filtered_data else ([], [], [])
+hough_angle = np.array(hough_angle)
+azimuthal_angle = np.array(azimuthal_angle)
 
 print('number of issues', n_error)
 print('number of goods', n_good)
 print('number of good traces', n_good_trace)
-print('mean angle', np.mean(angle))
+print('mean angle', np.mean(hough_angle))
 n_bins = 14
 
 #plt.hist(angle, bins=n_bins)
 plt.figure('angle distribution muons')
-hh, bb = np.histogram(angle, bins = n_bins)
+hh, bb = np.histogram(hough_angle, bins = n_bins)
 x = (bb[0:-1]+bb[1:])/2
 plt.bar(x, hh, width=np.mean(bb[0:-1]-bb[1:]), label = 'Muons angles distribution')
 # fit Cos2 theta
@@ -169,7 +255,7 @@ plt.show()
 
 
 #### Muongram ####
-data = pd.DataFrame({'date': date, 'angle': angle})  # Create a DataFrame with date and angle
+data = pd.DataFrame({'date': date, 'angle': hough_angle})  # Create a DataFrame with date and angle
 data['day'] = data['date'].dt.date  # Extract the day from the date
 angles = data['angle'].values  # Extract angle values
 interval_hours = 6   # Define the interval in hours
@@ -191,7 +277,7 @@ plt.show()
 #################
 
 # Muongram and plot with rolling time interval windows
-data = pd.DataFrame({'date': date, 'angle': angle})
+data = pd.DataFrame({'date': date, 'angle': hough_angle})
 data['day'] = data['date'].dt.date  
 window_size = 12  # Taille de la fenêtre en heures
 step_size = 1  # Taille du pas en heures
@@ -256,7 +342,7 @@ plt.show()
 
 #### plot the angle vs date #####
 plt.figure('detected muon angle vs date')
-plt.plot(date, angle, '.k')
+plt.plot(date, hough_angle, '.k')
 plt.xlabel('Date [1 minute resolution]')
 plt.ylabel('Detected Muon angle [°]')
 plt.show()
@@ -265,7 +351,7 @@ plt.show()
 
 ##### Cluster on angle of muons vs date ########
 date_numeric = mdates.date2num(date) 
-ax,fig = density_scatter(date_numeric, angle, bins=50, cmap='plasma', alpha=0.7)
+ax,fig = density_scatter(date_numeric, hough_angle, bins=50, cmap='plasma', alpha=0.7)
 ax.set_title('Detected Muon angle vs date with density contours using interpolation')
 ax.set_xlabel('Date [1 minute resolution]')
 ax.set_ylabel('Detected Muon angle [°]')
@@ -277,15 +363,80 @@ plt.show()
 #############################################
 
 
-########### plot the azymuthal angle distribution of the muons ########
-azymuthal_angle = np.array(azymuthal_angle)
-azymuthal_angle=np.append(azymuthal_angle, -azymuthal_angle)
-plt.hist(azymuthal_angle, bins = 180)
-plt.xlabel('Azimuthal Angle [°]')
-plt.ylabel('Count')
-plt.title('Caliste-MMA, cosmic-ray muons azimuthal angle distribution')
+########### plot the theta and phi angle distribution of the muons ########
+plt.figure('theta and phi angle distribution')
+fig, axs = plt.subplots(1, 3, figsize=(14, 6))
+# Histogram for theta
+axs[0].hist(theta_array, bins=14, color='blue', alpha=0.7)
+axs[0].set_xlabel('Theta Angle [°]')
+axs[0].set_ylabel('Count')
+axs[0].set_title('Theta angle distribution')
+
+# Histogram for phi
+axs[1].hist(phi_array, bins=14, color='red', alpha=0.7)
+axs[1].set_xlabel('Phi Angle [°]')
+axs[1].set_ylabel('Count')
+axs[1].set_title('Phi angle distribution')
+
+axs[2].hist(rho_array, bins=24, color='black', alpha=0.7)
+axs[2].set_xlabel('Rho [cm]')
+axs[2].set_ylabel('Count')
+axs[2].set_title('Rho distribution')
+
+
+plt.tight_layout()
 plt.show()
 ######################################################################
+
+
+
+
+
+# #### 3D plot of the zenithal and azimuthal angles of the muons #####
+# zenithal_angle_rad = np.radians(hough_angle)
+# azimuthal_angle_rad = np.radians(azimuthal_angle)
+# ### 3D plot of the zenithal and azimuthal angles of the muons #####
+# x = np.sin(zenithal_angle_rad) * np.cos(azimuthal_angle_rad)
+# y = np.sin(zenithal_angle_rad) * np.sin(azimuthal_angle_rad)
+# z = np.cos(zenithal_angle_rad)
+# hist, edges = np.histogramdd(np.array([hough_angle, azimuthal_angle]).T, bins=(14, 7))
+# x_edges, y_edges = np.meshgrid(edges[0][:-1], edges[1][:-1])
+
+# fig = plt.figure(figsize=(10, 7))
+# ax = fig.add_subplot(111, projection='3d')
+# ax.plot_surface(x_edges, y_edges, hist.T, cmap='viridis')
+# ax.set_title('3D plot of the zenithal and azimuthal angles of the muons')
+# ax.set_xlabel('Zenithal Angle [°]')
+# ax.set_ylabel('Azimuthal Angle [°]')
+# ax.set_zlabel('Counts')
+# plt.show()
+####################################################################
+
+
+# 2D histogram of the zenithal and azimuthal angles of the muons
+# plt.figure(figsize=(8, 6))
+# plt.figure('2D Histogram of Zenithal and Azimuthal Angles')
+# hist, x_edges, y_edges, im = plt.hist2d(hough_angle, azimuthal_angle, bins=(30, 30), cmap='viridis')
+# plt.colorbar(im, label='Counts')
+# plt.xlabel('Zenithal Angle [°]')
+# plt.ylabel('Azimuthal Angle [°]')
+# plt.title('2D Histogram of Zenithal and Azimuthal Angles')
+# plt.show()
+####################################################################
+
+
+# 2D histogram of the theta and phi angles of the muons
+plt.figure(figsize=(8, 6))
+plt.figure('2D Histogram of Theta and Phi Angles')
+hist, x_edges, y_edges, im = plt.hist2d(theta_array, phi_array, bins=(30, 30), cmap='viridis', norm=LogNorm())
+plt.colorbar(im, label='Counts')
+plt.xlabel('Theta Angle [°]')
+plt.ylabel('Phi Angle [°]')
+plt.title('2D Histogram of Theta and Phi Angles')
+plt.show()
+###################################################################
+
+
 
 #############################################
 # plot the number of muons detected per day

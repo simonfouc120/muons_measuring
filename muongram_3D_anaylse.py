@@ -31,7 +31,7 @@ plt.show()
 
 # Create a frame exemple with 1 and 0 
 # change y axis of matrix to 1
-matrix[5,5:16] = 1 
+matrix[5,5:15] = 1 
 
 
 # Show the matrix and invert y axis
@@ -42,10 +42,21 @@ plt.xlabel('X pixel')
 plt.ylabel('Y pixel')
 plt.show()
 
-y_max = np.max(np.where(matrix !=0 )[1])
-y_min = np.min(np.where(matrix !=0 )[1])
+z_max = np.max(np.where(matrix !=0 )[1])
+z_min = np.min(np.where(matrix !=0 )[1])
+z_vector = (z_max - z_min) * pixel_size
 
-# Calculate the angle of the muon
-angle = np.arctan(thickness/(((y_max - y_min)-1)*pixel_size))
-print('The angle of the muon is:', np.float16(np.rad2deg(angle)), "°")
+x_max = np.max(np.where(matrix !=0 )[0])
+x_min = np.min(np.where(matrix !=0 )[0])
+x_vector = (x_max - x_min) * pixel_size
+
+y_vector = thickness
+
+rho = np.sqrt(x_vector**2 + y_vector**2 + z_vector**2)
+theta = np.arccos(z_vector/rho)
+phi = np.arctan(np.sqrt(x_vector**2 + y_vector**2)/z_vector)
+
+print('The norm is', rho)
+print('The angle theta is:', np.rad2deg(theta))
+print('The angle phi is:', np.rad2deg(phi))
 
