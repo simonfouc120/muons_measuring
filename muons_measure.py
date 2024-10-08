@@ -47,6 +47,16 @@ def find_angle(matrix) :
 
 
 def count_clusters(matrix):
+    """
+    Count the number of clusters in a 2D array.
+
+    Parameters:
+    matrix (numpy.ndarray): 2D array representing the detector hitmap.
+
+    Returns:
+    int: The number of clusters in the hitmap.
+    """
+
     def dfs(row, col):
         if row < 0 or col < 0 or row >= len(matrix) or col >= len(matrix[0]) or matrix[row][col] == 0:
             return
@@ -78,7 +88,6 @@ def find_angle_v2(matrix) :
         - theta (float): The theta angle of the muon trace in degrees.
         - phi (float): The phi angle of the muon trace in degrees.
     """ 
-    # I want to know the coordinates (x and y) of the pixel hited with the highest y value (axis 1)
     y_coords, x_coords = np.where(matrix != 0)
     z_max = np.argmin(y_coords)
     x_1 = x_coords[z_max]
@@ -134,7 +143,9 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, cmap='plasma', **kwargs):
 
 
 Files = list_files_in_repository(r"C:/Users/sf270338/MMA/Caliste-MMA/Muons cosmiques/DATA_20240912_20240922")
-#
+
+
+# Pour olivier :
 # Files += list_files_in_repository("/Users/ol161303/Documents/PROGRAMMES/IDL-DATA/prog_idl/02_STIX/PIPELINE/V_20200412/MMA/11_CALISTE_MM_CONFIG/DATA_20240830_20240919/20240917_20240919-LT30")
 Files = sorted(Files)
 
@@ -171,7 +182,7 @@ for file in Files[0:10000]:
 
     if m.size > 0 and np.max(m) > Multi_max: # select images with less than 22 pixels fired (risk of noise with LT30)
         n_error += 1 # a bad multi is detected and rejected
-    elif m.size and np.max(m)> Multi_min: # select traces with more than 8 pixels fired
+    elif m.size and np.max(m) >= Multi_min: # select traces with more than 8 pixels fired
         if count_clusters(d['hitmap_'+str(m[-1])].reshape((16, 16))) < 2 :
             n_good_trace += 1 # a good event is detected
             idx = np.int32(np.char.find(file, '.npz'))
@@ -364,8 +375,9 @@ plt.show()
 
 
 ########### plot the theta and phi angle distribution of the muons ########
-plt.figure('theta and phi angle distribution')
 fig, axs = plt.subplots(1, 3, figsize=(14, 6))
+plt.figure('theta and phi angle distribution')
+
 # Histogram for theta
 axs[0].hist(theta_array, bins=14, color='blue', alpha=0.7)
 axs[0].set_xlabel('Theta Angle [°]')
@@ -436,21 +448,47 @@ plt.title('2D Histogram of Theta and Phi Angles')
 plt.show()
 ###################################################################
 
+# 3D heatmap on a sphere
+hist, theta_edges, phi_edges = np.histogram2d(theta_array, phi_array, bins=(30, 30))
+theta_centers = (theta_edges[:-1] + theta_edges[1:]) / 2
+phi_centers = (phi_edges[:-1] + phi_edges[1:]) / 2
+theta_grid, phi_grid = np.meshgrid(theta_centers, phi_centers)
+x = np.rad2deg(np.sin(np.radians(theta_grid)) * np.cos(np.radians(phi_grid)))
+y = np.rad2deg(np.sin(np.radians(theta_grid)) * np.sin(np.radians(phi_grid)))
+z = np.rad2deg(np.cos(np.radians(theta_grid)))
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+u = np.linspace(0, 2 * np.pi, 100)
+v = np.linspace(0, np.pi, 100)
+x_sphere = np.outer(np.cos(u), np.sin(v))
+y_sphere = np.outer(np.sin(u), np.sin(v))
+z_sphere = np.outer(np.ones(np.size(u)), np.cos(v))
+ax.plot_surface(x_sphere, y_sphere, z_sphere, color='w', alpha=0.1)
+hist = hist.T  # Transposer pour correspondre aux coordonnées
+ax.plot_surface(x, y, z, facecolors=plt.cm.viridis(LogNorm()(hist)), rstride=1, cstride=1, alpha=0.9, shade=False)
+norm = Normalize(vmin=np.min(hist), vmax=np.max(hist))
+mappable = cm.ScalarMappable(norm=norm, cmap='viridis')
+mappable.set_array(hist)
+plt.colorbar(mappable, ax=ax, label='Counts')
+
+ax.set_xlabel('Phi Angle [°]')
+ax.set_ylabel('Theta Angle [°]')
+ax.set_zlabel('Z')
+ax.set_title('3D Heatmap on a Sphere')
+plt.show()
 
 
-#############################################
-# plot the number of muons detected per day
-# plt.figure('muons per day')
-# unique_days = data['day'].unique()
-# plt.hist(date, bins = len(unique_days)*2)
-# plt.xlabel('Date')
-# plt.gca().xaxis.set_major_locator(locator)
-# plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-# plt.gcf().autofmt_xdate()
-# plt.ylabel('Number of muons detected')
-# plt.title('Number of muons detected per day')
-# plt.show()
-#############################################
+# The energy deposited by a muon in a CdTe detector is given by the formula: E = 0.31 * rho * cos(theta) MeV
+# where rho is the distance of the muon trace, and theta is the zenithal angle of the muon trace
+deposited_energy = 11.7 * np.array(rho_array) 
+plt.figure('Estimated deposited Energy of Muons')
+plt.hist(deposited_energy, bins=24, color='green', alpha=0.7, edgecolor='blue', linewidth=1.2, histtype='step')
+plt.xlabel('Deposited Energy [MeV]')
+plt.ylabel('Count')
+plt.title('Deposited Energy of Muons in the Detector')
+plt.show()
+####################################################################
+
 
 n_files = len(Files)
 RealTime = date[-1]-date[0]
